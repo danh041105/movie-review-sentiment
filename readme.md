@@ -9,15 +9,7 @@
 3. Tạo thêm `MINIO_ROOT_USER =<trong file docker-compose có>`
 4. Tạo thêm `MINIO_ROOT_PASSWORD =<trong file docker-compose có>`
 ### 3. Lấy dữ liệu về
-1. Tạo thư mục `dataset` trong `ingestion`
-2. Truy cập trang:
-   https://amazon-reviews-2023.github.io/
-3. Tìm **Movies_and_TV**
-4. Tải 2 file:
-   - review
-   - meta
-5. Đặt vào thư mục `dataset`
-6. Chạy 2 file trong `ingestion`
+1. Chạy 2 file trong `ingestion`
    - `tmdb`
    - `run`
 ### 4. To be continue...
