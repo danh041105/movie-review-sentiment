@@ -1,6 +1,5 @@
-data/
+data/minio_data/.minio.sys/
 logs/
 .venv/
 .env
 __pycache__/
-dataset/

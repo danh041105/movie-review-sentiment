@@ -1,5 +1,5 @@
 ### Kiến trúc
-![Kiến trúc](Architecture.png)
+![Kiến trúc](architecture.png)
 
 ### Các bước thực hiện
 ## 1. Clone repository về
