@@ -28,9 +28,12 @@ def upload_to_minio(raw_data, source, entity, methods, http_status, search_param
         return
     now = datetime.now()
     partition = f"{source}/{entity}/year={now.year}/month={now.month:02d}/day={now.day:02d}"
+    movie_id = search_params.get("movie_id")
+    if entity == "reviews" and movie_id:
+        partition += f"/movie_id={movie_id}"
     file_name = f"trending_{now.strftime('%H%M%S')}.jsonl"
     object_key = f"{partition}/{file_name}"
-
+    
     jsonl_content = ""
     for item in raw_data:
         record = Schema(
