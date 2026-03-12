@@ -30,3 +30,4 @@ class Schema:
         },
         "raw_payload": self.raw_data
         }
+        return schema
