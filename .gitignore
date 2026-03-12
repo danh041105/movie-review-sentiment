@@ -1,4 +1,4 @@
-data/minio_data/.minio.sys/
+data/minio_data/
 logs/
 .venv/
 .env

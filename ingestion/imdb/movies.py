@@ -95,3 +95,9 @@ def ingest_imdb_movies(movie_id):
         )
         return f"Metadata hoàn thành: {movie_id}"
     return f"Metadata thất bại: {movie_id}"
+
+# if __name__ == "__main__":
+#     data = fetch_movie_ids()
+#     movie = data[0]
+#     movie_info = get_movie_info(movie)
+#     print(movie_info)
