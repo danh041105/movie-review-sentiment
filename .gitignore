@@ -1,5 +1,6 @@
-data
+data/
 logs/
 .venv/
 .env
-__pycache__
+*.pyc
+__pycache__/
