@@ -10,6 +10,6 @@
 4. Tạo thêm `MINIO_ROOT_PASSWORD =<trong file docker-compose có>`
 ### 3. Lấy dữ liệu về
 1. Chạy 2 file trong `ingestion`
-   - `tmdb`
-   - `run`
+   - `tmdb_run`
+   - `imdb_run`
 ### 4. To be continue...
