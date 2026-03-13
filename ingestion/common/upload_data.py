@@ -6,7 +6,7 @@ from minio import Minio
 import io
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from schema import Schema
+from ingestion.common.schema import Schema
 load_dotenv()
 
 # Thiết lập kết nối đến MinIO

@@ -3,8 +3,8 @@ import json
 import time
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from upload_data import upload_to_minio
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from ingestion.common.upload_data import upload_to_minio
 
 GRAPHQL_URL = "https://caching.graphql.imdb.com/"
 PAGE_SIZE = 25

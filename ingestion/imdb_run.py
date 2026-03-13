@@ -1,5 +1,5 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
-# Import trực tiếp vì các file nằm cùng thư mục imdb/
 from imdb.movies import fetch_movie_ids, ingest_imdb_movies 
 from imdb.reviews import ingest_reviews_movie
 
@@ -41,4 +41,4 @@ if __name__ == "__main__":
     # movie_limit: Tổng số phim muốn cào
     # reviews_per_movie: Số lượng review tối đa cho mỗi phim
     # max_workers: Số luồng chạy song song (Nên để 5-10)
-    main(movie_limit=20, reviews_per_movie=100, max_workers=5)
+    main(movie_limit=20, reviews_per_movie=300, max_workers=5)
