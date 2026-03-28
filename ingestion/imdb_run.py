@@ -1,44 +1,60 @@
-import os
-from concurrent.futures import ThreadPoolExecutor
-from imdb.movies import fetch_movie_ids, ingest_imdb_movies 
+import time
+from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from imdb.movies import fetch_movie_ids, ingest_all_movies
 from imdb.reviews import ingest_reviews_movie
 
-def process_single_movie(movie_id, reviews_per_movie):
-    """
-    Worker xử lý trọn gói cho 1 phim: 
-    Lấy Metadata và Reviews rồi đẩy lên MinIO.
-    """
-    try:
-        ingest_imdb_movies(movie_id)
-        ingest_reviews_movie(movie_id, reviews_per_movie)
-        return f"Thành công: {movie_id}"
-    except Exception as e:
-        return f"Lỗi tại {movie_id}: {str(e)}"
-    
-def main(movie_limit, reviews_per_movie, max_workers=5):
-    print(f"Bắt đầu IMDb Ingestion Pipeline (Parallel Mode)...")
-    all_ids = fetch_movie_ids()
-    if not all_ids:
+def main(movie_limit=100, reviews_per_movie=600, max_workers=10):
+    start_time = time.time()
+    print(f"[START] IMDb Pipeline: {movie_limit} phim | {reviews_per_movie} reviews/phim")
+    print("=" * 40)
+    # -------------------------------------------------------
+    # PHASE 1: Cào thông tin phim
+    # -------------------------------------------------------
+    print("\n📽️  Phase 1: Cào thông tin phim...")
+    phase1_start = time.time()
+
+    movie_ids = fetch_movie_ids(limit=movie_limit)
+    if not movie_ids:
         print("Lỗi: Không lấy được danh sách Movie ID.")
         return
-    
-    target_ids = all_ids[:movie_limit]
-    print(f"Quy mô: {len(target_ids)} phim | Số luồng: {max_workers}")
 
-    # Bước 2: Phân phối ID vào Pool để chạy đa luồng
+    all_movies = ingest_all_movies(movie_ids)
+    if not all_movies:
+        print("❌ Phase 1 thất bại: Không lấy được Metadata.")
+        return
+    phase1_duration = time.time() - phase1_start
+    print(f"⏱️ Phase 1 hoàn tất: {len(all_movies)} phim trong {round(phase1_duration, 2)}s\n")
+
+    # -------------------------------------------------------
+    # PHASE 2: Cào reviews phim
+    # -------------------------------------------------------
+    print(f"💬 Phase 2: Cào reviews ({max_workers} luồng song song)...")
+    phase2_start = time.time()
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # executor.map sẽ gửi từng ID vào hàm process_single_movie
-        results = list(executor.map(lambda mid: process_single_movie(mid, reviews_per_movie), target_ids))
-        
-    # In báo cáo kết quả sau khi hoàn thành
-    print("\n--- BÁO CÁO KẾT QUẢ ---")
-    for res in results:
-        print(f"✅ {res}")
+        future_to_movie = {
+            executor.submit(ingest_reviews_movie, movie_id, reviews_per_movie): movie_id
+            for movie_id in movie_ids
+        }
+        completed = 0
+        for future in as_completed(future_to_movie):
+            completed += 1
+            result = future.result()
+            print(f"  [{completed}/{len(movie_ids)}] ✅ {result}")
 
-    print("\nPipeline hoàn tất thành công!")
+    phase2_duration = time.time() - phase2_start
+    print(f"⏱️  Phase 2 hoàn tất: {len(movie_ids)} phim trong {round(phase2_duration, 2)}s\n")
+
+    # -------------------------------------------------------
+    # Tổng kết
+    # -------------------------------------------------------
+    total_duration = time.time() - start_time
+    print("=" * 40)
+    print(f"✨ HOÀN TẤT PIPELINE")
+    print(f"⏱️  Tổng thời gian: {str(timedelta(seconds=int(total_duration)))} ({round(total_duration, 2)}s)")
+    print(f"📊 Trung bình reviews: {round(phase2_duration / len(movie_ids), 2)}s/phim")
+    print("=" * 40)
 
 if __name__ == "__main__":
-    # movie_limit: Tổng số phim muốn cào
-    # reviews_per_movie: Số lượng review tối đa cho mỗi phim
-    # max_workers: Số luồng chạy song song (Nên để 5-10)
-    main(movie_limit=20, reviews_per_movie=300, max_workers=5)
+    main(movie_limit=100, reviews_per_movie=2000, max_workers=15)

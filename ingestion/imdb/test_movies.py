@@ -61,9 +61,14 @@ def fetch_movie_ids(limit=100):
         return []
 
 def ingest_all_movies(movie_ids):
+    """
+    Giai đoạn 1: Cào toàn bộ Metadata hàng loạt và đẩy lên MinIO.
+    Sử dụng cơ chế Bulk để tối ưu hóa tốc độ (giảm từ 100 request xuống còn 1).
+    """
     limit = len(movie_ids)
     print(f"🚀 Đang bắt đầu Bulk Ingest cho {limit} phim...")
     
+    # Sử dụng MOVIE_DETAIL_QUERY đã định nghĩa sẵn trong file của bạn
     payload = {
         "query": MOVIE_DETAIL_QUERY,
         "variables": {"first": limit}
@@ -73,33 +78,22 @@ def ingest_all_movies(movie_ids):
         response = requests.post(GRAPHQL_URL, headers=HEADERS, json=payload, timeout=20)
         response.raise_for_status()
         data = response.json()
-        
-        # KIỂM TRA LỖI GRAPHQL: Nếu không có key "data" hoặc "data" là None
-        if not data or data.get("data") is None:
-            error_msg = data.get("errors", "Không rõ nguyên nhân")
-            print(f" Lỗi từ IMDb GraphQL: {error_msg}")
-            return []
-
-        edges = data["data"].get("chartTitles", {}).get("edges", [])
+        edges = data.get("data", {}).get("chartTitles", {}).get("edges", [])
         bulk_metadata = []
-        
         for edge in edges:
-            node = edge.get("node")
-            if not node: continue
-            
-            # Sử dụng get() lồng nhau an toàn
-            movie_data = {
-                'imdb_id': node.get('id'),
-                'title': (node.get('titleText') or {}).get('text'),
-                'description': (node.get('plot', {}) or {}).get('plotText', {}).get('plainText'),
-                'release_date': node.get('releaseDate'),
-                'duration_seconds': (node.get('runtime') or {}).get('seconds'),
-                'genres': [g.get('text') for g in (node.get('genres') or {}).get('genres', [])] if node.get('genres') else [],
-                'rating': (node.get('ratingsSummary') or {}).get('aggregateRating'),
-                'vote_count': (node.get('ratingsSummary') or {}).get('voteCount')
-            }
-            bulk_metadata.append(movie_data)
-        
+            node = edge.get("node", {})
+            if node:
+                movie_data = {
+                    'imdb_id': node.get('id'),
+                    'title': node.get('titleText', {}).get('text'),
+                    'description': node.get('plot', {}).get('plotText', {}).get('plainText'),
+                    'release_date': node.get('releaseDate'),
+                    'duration_seconds': node.get('runtime', {}).get('seconds'),
+                    'genres': [g.get('text') for g in node.get('genres', {}).get('genres', [])] if node.get('genres') else [],
+                    'rating': node.get('ratingsSummary', {}).get('aggregateRating'),
+                    'vote_count': node.get('ratingsSummary', {}).get('voteCount')
+                }
+                bulk_metadata.append(movie_data)
         if bulk_metadata:
             upload_to_minio(
                 raw_data=bulk_metadata,
@@ -109,12 +103,11 @@ def ingest_all_movies(movie_ids):
                 http_status=200,
                 search_params={"movie_count": len(bulk_metadata)}
             )
+            print(f"Thành công: Đã đẩy {len(bulk_metadata)} phim lên MinIO server .125")
+            return True
+        
         return bulk_metadata
 
     except Exception as e:
-        print(f"Lỗi nghiêm trọng tại movies.py: {e}")
+        print(f"Lỗi trong quá trình Ingest: {e}")
         return []
-
-if __name__ == "__main__":
-    movie_ids = fetch_movie_ids()
-    all_movies = ingest_all_movies(movie_ids)

@@ -51,7 +51,7 @@ def fetch_reviews(movie_id, max_reviews):
                 "filter": {},
                 "first": PAGE_SIZE,
                 "sort": {
-                    "by": "HELPFULNESS_SCORE",
+                    "by": "SUBMISSION_DATE",
                     "order": "DESC"
                 },
                 "after": cursor
@@ -81,7 +81,7 @@ def fetch_reviews(movie_id, max_reviews):
             cursor = page_info.get("endCursor")
             if len(all_reviews) >= max_reviews:
                 break
-            time.sleep(1.5)
+            time.sleep(1)
         except Exception as e:
             print("Error:", e)
             break
