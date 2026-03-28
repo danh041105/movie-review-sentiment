@@ -7,7 +7,6 @@ load_dotenv()
 def get_spark_session(app_name='MovieTransformation'):
     spark = SparkSession.builder \
         .appName(app_name) \
-        .master(os.getenv("SPARK_URL")) \
         .config('spark.hadoop.fs.s3a.endpoint', os.getenv("MINIO_ENDPOINT")) \
         .config('spark.hadoop.fs.s3a.access.key', os.getenv('MINIO_ROOT_USER')) \
         .config('spark.hadoop.fs.s3a.secret.key', os.getenv('MINIO_ROOT_PASSWORD')) \
@@ -40,3 +39,19 @@ def read_daily_data_from_minio(spark, bucket_name, base_prefix, target_date=None
         print(f"[!] Không tìm thấy dữ liệu hoặc có lỗi xảy ra tại {s3a_path}")
         print(f"Chi tiết lỗi: {e}")
         return None
+    
+def write_data_to_minio(df, bucket_name, base_prefix, target_date=None, mode="overwrite", file_format="parquet"):
+    """
+    Hàm tiện ích ghi DataFrame xuống MinIO với cơ chế Partition theo ngày.
+    """
+    if target_date is None:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+        
+    output_path = f"s3a://{bucket_name}/{base_prefix}/{target_date}/"
+    print(f"[*] Đang ghi dữ liệu ({df.count()} dòng) xuống: {output_path}")
+    
+    try:
+        df.write.mode(mode).format(file_format).save(output_path)
+        print("[*] Ghi dữ liệu thành công!")
+    except Exception as e:
+        print(f"[!] Lỗi khi ghi dữ liệu: {e}")
