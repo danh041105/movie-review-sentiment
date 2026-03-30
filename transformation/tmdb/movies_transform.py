@@ -24,7 +24,7 @@ def transform_tmdb_movies(target_date=None):
         F.col("metadata.ingestion_timestamp").cast("timestamp").alias("ingestion_timestamp"),
         F.col("metadata.raw_hash").alias("raw_hash"),
         
-        F.col("raw_payload.movie_id").cast("string").alias("tmdb_id"),
+        F.col("raw_payload.id").cast("string").alias("tmdb_id"),
         F.col("raw_payload.imdb_id").alias("imdb_id"),
         F.trim(F.col("raw_payload.title")).alias("title"),
         F.col("raw_payload.original_title").alias("original_title"),

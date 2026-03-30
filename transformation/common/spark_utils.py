@@ -64,16 +64,29 @@ def ensure_bucket_exists(bucket_name):
         client.make_bucket(bucket_name)
         print(f"[*] Đã tạo bucket: {bucket_name}")
 
-def write_data_to_minio(df, bucket_name, base_prefix, target_date=None, mode="overwrite", file_format="parquet"):
+def get_layer_path(source, bucket_name, base_prefix, target_date=None):
     if target_date is None:
         target_date = datetime.now().strftime("%Y-%m-%d")
     ensure_bucket_exists(bucket_name)
     date_path = target_date.replace("-", "/")
-    output_path = f"s3a://{bucket_name}/{base_prefix}/{date_path}/"
+    output_path = f"{source}{bucket_name}/{base_prefix}/{date_path}/"
+    return output_path
+
+def write_data_to_minio(df, bucket_name, base_prefix, target_date=None, mode="overwrite", file_format="parquet"):
+    output_path = get_layer_path("s3a://", bucket_name, base_prefix, target_date)
     print(f"[*] Đang ghi dữ liệu ({df.count()} dòng) xuống: {output_path}")
-    
+    total_rows = df.count()
+    if total_rows < 50000:
+        n_parts = 1  # Dữ liệu nhỏ thì gom về 1 file
+    elif total_rows < 500000:
+        n_parts = 4  # Dữ liệu vừa
+    else:
+        n_parts = 10 # Dữ liệu lớn hơn
+        
+    print(f"[*] Tự động điều chỉnh: {total_rows} dòng -> {n_parts} partitions")    
+    print(f"[*] Đang ghi dữ liệu ({df.count()} dòng) xuống: {output_path}")
     try:
-        df.write.mode(mode).format(file_format).save(output_path)
+        df.coalesce(n_parts).write.mode(mode).format(file_format).save(output_path)
         print("[*] Ghi dữ liệu thành công!")
     except Exception as e:
         print(f"[!] Lỗi khi ghi dữ liệu: {e}")
