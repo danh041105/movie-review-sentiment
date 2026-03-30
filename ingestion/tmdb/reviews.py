@@ -7,21 +7,31 @@ from ingestion.common.upload_data import upload_to_minio
 
 load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+
+def get_imdb_id(movie_id):
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+    params = {"api_key": TMDB_API_KEY}
+
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+
+    data = response.json()
+    return data.get("imdb_id")
 def ingest_tmdb_reviews(movie_id, max_pages=2):
     try:
         all_reviews = []
+        imdb_id = get_imdb_id(movie_id)
         for page in range(1, max_pages + 1):
             url = f"https://api.themoviedb.org/3/movie/{movie_id}/reviews"
             params = {"api_key": TMDB_API_KEY , "page": page}
-
             response = requests.get(url, params=params)
             response.raise_for_status()
-
             data = response.json()
             results = data.get("results", [])
             if not results: break
             for r in results:
                 r["movie_id"] = movie_id
+                r["imdb_id"] = imdb_id
                 all_reviews.append(r)
             if page >= data.get("total_pages", 0): break
 

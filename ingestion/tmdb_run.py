@@ -31,4 +31,4 @@ def main(movie_limit=10, reviews_pages=2, max_workers=5):
 
 if __name__ == "__main__":
     # movie_limit: số phim, reviews_pages: số trang review (mỗi trang ~20 bản ghi)
-    main(movie_limit=100, reviews_pages=10, max_workers=5)
+    main(movie_limit=100, reviews_pages=200, max_workers=5)

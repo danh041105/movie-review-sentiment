@@ -23,7 +23,7 @@ def fetch_movie_genres():
 
 GENRE_MAP = fetch_movie_genres()
 
-def fetch_trending_movie_ids(limit=20):
+def fetch_trending_movie_ids(limit=100):
     url = f"{BASE_URL}/trending/movie/day"
     params = {"api_key": TMDB_API_KEY}
     try:
