@@ -24,16 +24,31 @@ def fetch_movie_genres():
 GENRE_MAP = fetch_movie_genres()
 
 def fetch_trending_movie_ids(limit=100):
-    url = f"{BASE_URL}/trending/movie/day"
-    params = {"api_key": TMDB_API_KEY}
-    try:
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            results = response.json().get("results", [])
-            return [m["id"] for m in results][:limit]
-    except Exception as e:
-        print(f"Lỗi lấy danh sách Trending: {e}")
-    return []
+    page = 1
+    all_movie_ids = []
+    while len(all_movie_ids) < limit:
+        url = f"{BASE_URL}/trending/movie/day"
+        params = {
+            "api_key": TMDB_API_KEY,
+            "page": page
+            }
+        try:
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get("results", [])
+                for movie in results:
+                    if movie["id"] not in all_movie_ids:
+                        all_movie_ids.append(movie["id"])
+                    if len(all_movie_ids) >= limit: 
+                        break
+            if page >= data.get("total_pages", 0):
+                break
+            page += 1
+        except Exception as e:
+            print(f"Lỗi lấy danh sách Trending: {e}")
+            return []
+    return all_movie_ids
 
 def ingest_tmdb_movie(movie_id):
     url = f"{BASE_URL}/movie/{movie_id}"
