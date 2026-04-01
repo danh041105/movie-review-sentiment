@@ -81,7 +81,7 @@ services:
     container_name: spark-worker
     depends_on:
       - spark-master
-    command: /opt/spark/bin /spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077

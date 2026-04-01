@@ -2,10 +2,13 @@ import os
 from pyspark.sql import SparkSession
 from dotenv import load_dotenv
 from datetime import datetime
-load_dotenv()
 from minio import Minio
-os.environ["HADOOP_HOME"] = "D:/hadoop"
-os.environ["PATH"] = os.environ["PATH"] + ";D:/hadoop/bin"
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+load_dotenv()
+
+os.environ["HADOOP_HOME"] = "hadoop"
+os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.join("hadoop", "bin")
 
 def get_spark_session(app_name='MovieTransformation'):
     spark = SparkSession.builder \

@@ -2,12 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 from tmdb.movies import ingest_tmdb_movie, fetch_trending_movie_ids
 from tmdb.reviews import ingest_tmdb_reviews
 
-def process_single_tmdb_movie(movie_id, reviews_pages):
+def process_single_tmdb_movie(movie_id, max_reviews):
     m_status = ingest_tmdb_movie(movie_id)
-    r_status = ingest_tmdb_reviews(movie_id, max_pages=reviews_pages)
+    r_status = ingest_tmdb_reviews(movie_id, max_reviews)
     return f"{m_status} | {r_status}"
 
-def main(movie_limit=10, reviews_pages=2, max_workers=5):
+def main(movie_limit=100, max_reviews=2000, max_workers=5):
     print(f"Khởi động TMDB Ingestion Pipeline (Đa luồng)...")
 
     # Bước 1: Lấy danh sách ID phim mục tiêu
@@ -20,7 +20,7 @@ def main(movie_limit=10, reviews_pages=2, max_workers=5):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # executor.submit để gửi các task vào pool
         futures = [
-            executor.submit(process_single_tmdb_movie, mid, reviews_pages) 
+            executor.submit(process_single_tmdb_movie, mid, max_reviews) 
             for mid in movie_ids
         ]
         # In kết quả khi từng thread hoàn thành
@@ -30,5 +30,5 @@ def main(movie_limit=10, reviews_pages=2, max_workers=5):
     print("\nTMDB Pipeline hoàn tất!")
 
 if __name__ == "__main__":
-    # movie_limit: số phim, reviews_pages: số trang review (mỗi trang ~20 bản ghi)
-    main(movie_limit=100, reviews_pages=200, max_workers=5)
+    # movie_limit: số phim, max_reviews: số bình luận tối đa
+    main(movie_limit=100, max_reviews=200, max_workers=5)

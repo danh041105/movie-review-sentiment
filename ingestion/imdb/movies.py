@@ -51,11 +51,11 @@ def fetch_movie_ids(limit=100):
     }
     try:
         response = requests.post(GRAPHQL_URL, headers=HEADERS, json=movie_id_payload)
-        response.raise_for_status()
-        data = response.json()
-        edges = data.get("data", {}).get("chartTitles", {}).get("edges", [])
-        movie_ids = [edge["node"]["id"] for edge in edges]
-        return movie_ids
+        if response.status_code == 200:
+            data = response.json()
+            edges = data.get("data", {}).get("chartTitles", {}).get("edges", [])
+            movie_ids = [edge["node"]["id"] for edge in edges]
+            return movie_ids
     except Exception as e:
         print(f"Lỗi: không thể kết nối đến với GraphQL {e}")
         return []
