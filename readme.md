@@ -12,4 +12,8 @@
 1. Chạy 2 file trong `ingestion`
    - `tmdb_run`
    - `imdb_run`
-### 4. To be continue...
+### 4. Biến đổi dữ liệu
+1. Chạy 2 file movies_run và silver_run
+2. Chạy tiếp merge_silver để hoàn tất quá trình
+### 5. Chạy xử lý NLP
+# So sánh 2 mô hình Bert và RoBert
