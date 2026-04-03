@@ -7,16 +7,22 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 load_dotenv()
 
-os.environ["HADOOP_HOME"] = "hadoop"
-os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.join("hadoop", "bin")
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+hadoop_dir = os.path.join(project_root, "hadoop")
+os.environ["HADOOP_HOME"] = hadoop_dir
+os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.join(hadoop_dir, "bin")
 
 def get_spark_session(app_name='MovieTransformation'):
+    python_exe = sys.executable
+    os.environ['PYSPARK_PYTHON'] = python_exe
+    os.environ['PYSPARK_DRIVER_PYTHON'] = python_exe
     spark = SparkSession.builder \
         .appName(app_name) \
         .config("spark.jars.packages",
                 "org.apache.hadoop:hadoop-aws:3.4.1,"
                 "com.amazonaws:aws-java-sdk-bundle:1.12.262") \
         .config("spark.hadoop.fs.s3a.endpoint", os.getenv("MINIO_ENDPOINT")) \
+        .config("spark.pyspark.driver.python", python_exe) \
         .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_ROOT_USER")) \
         .config("spark.hadoop.fs.s3a.secret.key", os.getenv("MINIO_ROOT_PASSWORD")) \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \

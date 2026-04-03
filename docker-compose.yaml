@@ -85,7 +85,7 @@ services:
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
-      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_MEMORY: 8G
     volumes:
       - ./docker-data/spark:/opt/spark-data
 

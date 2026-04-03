@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime
 from common.spark_utils import get_spark_session
-from pyspark.sql import functions as F
+from pyspark import functions as F
 from common.spark_utils import write_data_to_minio
 SILVER_BUCKET = "silver"
 def create_training_dataset(target_date=None):
@@ -30,12 +30,10 @@ def create_training_dataset(target_date=None):
                       .filter(F.length(F.col("content")) > 30) \
                       .filter(F.col("content").isNotNull())
     
-    # 4. Lưu dữ liệu ra phân vùng trung gian chờ Hugging Face nạp
     write_data_to_minio(clean_df, SILVER_BUCKET, "nlp/dataset", target_date)
     print(f"Tổng số bản ghi chuẩn bị: {clean_df.count()}")
     clean_df.groupBy("source_system").count().show()
     spark.stop()
-
 if __name__ == "__main__":
     target_date = datetime.now().strftime("%Y-%m-%d")
     create_training_dataset(target_date)
