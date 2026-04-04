@@ -1,0 +1,161 @@
+import os
+from dotenv import load_dotenv
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType
+
+load_dotenv()
+
+# ── Config ────────────────────────────────────────────────────────────────────
+MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "admin")
+MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "password")
+SILVER_BUCKET   = os.getenv("SILVER_BUCKET", "silver")
+
+PG_HOST     = os.getenv("PG_HOST", "postgres")
+PG_PORT     = os.getenv("PG_PORT", "5432")
+PG_DB       = os.getenv("PG_DB", "movie_dw")
+PG_USER     = os.getenv("PG_USER", "airflow")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "airflow")
+PG_URL      = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
+PG_PROPS    = {"user": PG_USER, "password": PG_PASSWORD, "driver": "org.postgresql.Driver"}
+
+S3_MOVIES  = f"s3a://{SILVER_BUCKET}/merged/movies/"
+S3_REVIEWS = f"s3a://{SILVER_BUCKET}/merged/reviews/"
+
+# ── SparkSession ──────────────────────────────────────────────────────────────
+spark = (
+    SparkSession.builder
+    .appName("GoldLayer")
+    .config("spark.hadoop.fs.s3a.endpoint",            f"http://{MINIO_ENDPOINT}")
+    .config("spark.hadoop.fs.s3a.access.key",          MINIO_ACCESS)
+    .config("spark.hadoop.fs.s3a.secret.key",          MINIO_SECRET)
+    .config("spark.hadoop.fs.s3a.path.style.access",   "true")
+    .config("spark.hadoop.fs.s3a.impl",                "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config("spark.jars.packages",
+            "org.apache.hadoop:hadoop-aws:3.3.4,"
+            "com.amazonaws:aws-java-sdk-bundle:1.12.262,"
+            "org.postgresql:postgresql:42.6.0")
+    .getOrCreate()
+)
+spark.sparkContext.setLogLevel("WARN")
+
+# ── Đọc Silver ────────────────────────────────────────────────────────────────
+print("📖 Đọc data từ Silver layer...")
+df_movies  = spark.read.parquet(S3_MOVIES)
+df_reviews = spark.read.parquet(S3_REVIEWS)
+
+print(f"   Movies : {df_movies.count()} rows")
+print(f"   Reviews: {df_reviews.count()} rows")
+
+# ── dim_movie ─────────────────────────────────────────────────────────────────
+print("\n🎬 Tạo dim_movie...")
+dim_movie = (
+    df_movies
+    .select(
+        F.monotonically_increasing_id().cast(IntegerType()).alias("movie_id"),
+        "title",
+        F.to_date("release_date").alias("release_date"),
+        F.col("rating").alias("imdb_rating"),
+        F.col("vote_count").alias("imdb_vote_count"),
+        F.col("description").alias("overview"),
+        F.col("source").alias("source_system"),
+    )
+    .dropDuplicates(["title"])
+)
+dim_movie.write.jdbc(PG_URL, "dim_movie", mode="append", properties=PG_PROPS)
+print(f"   ✅ dim_movie: {dim_movie.count()} rows")
+
+# ── dim_author ────────────────────────────────────────────────────────────────
+print("\n👤 Tạo dim_author...")
+dim_author = (
+    df_reviews
+    .select("author", F.col("source").alias("source_system"))
+    .dropDuplicates(["author"])
+    .withColumn("author_id", F.monotonically_increasing_id().cast(IntegerType()))
+    .select("author_id", "author", "source_system")
+)
+dim_author.write.jdbc(PG_URL, "dim_author", mode="append", properties=PG_PROPS)
+print(f"   ✅ dim_author: {dim_author.count()} rows")
+
+# ── dim_date ──────────────────────────────────────────────────────────────────
+print("\n📅 Tạo dim_date...")
+dim_date = (
+    df_reviews
+    .select(F.to_date("created_at").alias("full_date"))
+    .dropDuplicates(["full_date"])
+    .withColumn("date_id",     F.monotonically_increasing_id().cast(IntegerType()))
+    .withColumn("year",        F.year("full_date"))
+    .withColumn("month",       F.month("full_date"))
+    .withColumn("day",         F.dayofmonth("full_date"))
+    .withColumn("quarter",     F.quarter("full_date"))
+    .withColumn("day_of_week", F.dayofweek("full_date"))
+    .select("date_id", "full_date", "year", "month", "day", "quarter", "day_of_week")
+)
+dim_date.write.jdbc(PG_URL, "dim_date", mode="append", properties=PG_PROPS)
+print(f"   ✅ dim_date: {dim_date.count()} rows")
+
+# ── dim_sentiment ─────────────────────────────────────────────────────────────
+print("\n😊 Tạo dim_sentiment...")
+dim_sentiment_data = [
+    (1, "positive", 1),
+    (2, "negative", 0),
+]
+dim_sentiment = spark.createDataFrame(
+    dim_sentiment_data, ["sentiment_id", "label", "prediction_sentiment"]
+)
+dim_sentiment.write.jdbc(PG_URL, "dim_sentiment", mode="append", properties=PG_PROPS)
+print(f"   ✅ dim_sentiment: {dim_sentiment.count()} rows")
+
+# ── fact_reviews ──────────────────────────────────────────────────────────────
+print("\n📝 Tạo fact_reviews...")
+
+# Join để lấy movie_id
+reviews_with_movie = df_reviews.join(
+    dim_movie.select("movie_id", "imdb_id", "tmdb_id"),
+    on=(df_reviews.imdb_id == dim_movie.imdb_id) | (df_reviews.tmdb_id == dim_movie.tmdb_id),
+    how="left"
+)
+
+# Join để lấy author_id
+reviews_with_author = reviews_with_movie.join(
+    dim_author.select("author_id", "author"),
+    on="author",
+    how="left"
+)
+
+# Join để lấy date_id
+reviews_with_date = reviews_with_author.join(
+    dim_date.select("date_id", "full_date"),
+    on=(F.to_date(reviews_with_author.created_at) == dim_date.full_date),
+    how="left"
+)
+
+# Gán sentiment_id dựa theo rating
+fact_reviews = (
+    reviews_with_date
+    .withColumn("sentiment_score", F.col("rating") / 10)
+    .withColumn("sentiment_id",
+    F.when(F.col("sentiment_score") >= 0.6, 1)
+     .otherwise(2)
+)
+    .select(
+        F.col("review_id"),
+        F.col("movie_id"),
+        F.col("author_id"),
+        F.col("date_id"),
+        F.col("sentiment_id"),
+        F.col("rating"),
+        F.col("sentiment_score"),
+        F.col("content"),
+        F.col("source_system"),
+        F.col("ingestion_id"),
+    )
+    .dropDuplicates(["review_id"])
+)
+
+fact_reviews.write.jdbc(PG_URL, "fact_reviews", mode="append", properties=PG_PROPS)
+print(f"   ✅ fact_reviews: {fact_reviews.count()} rows")
+
+print("\n🎉 Gold layer hoàn tất!")
+spark.stop()
