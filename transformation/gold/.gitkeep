@@ -1,161 +1,83 @@
 import os
-from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType
 
-load_dotenv()
+PG_URL = 'jdbc:postgresql://postgres:5432/movie_dw'
+PG_PROPS = {'user': 'airflow', 'password': 'airflow', 'driver': 'org.postgresql.Driver'}
 
-# ── Config ────────────────────────────────────────────────────────────────────
-MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "minio:9000")
-MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "admin")
-MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "password")
-SILVER_BUCKET   = os.getenv("SILVER_BUCKET", "silver")
+spark = (SparkSession.builder.appName('GoldLayer')
+    .config('spark.hadoop.fs.s3a.endpoint', 'http://minio:9000')
+    .config('spark.hadoop.fs.s3a.access.key', 'admin')
+    .config('spark.hadoop.fs.s3a.secret.key', 'password')
+    .config('spark.hadoop.fs.s3a.path.style.access', 'true')
+    .config('spark.hadoop.fs.s3a.impl', 'org.apache.hadoop.fs.s3a.S3AFileSystem')
+    .config('spark.jars.packages', 'org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.6.0')
+    .getOrCreate())
+spark.sparkContext.setLogLevel('WARN')
 
-PG_HOST     = os.getenv("PG_HOST", "postgres")
-PG_PORT     = os.getenv("PG_PORT", "5432")
-PG_DB       = os.getenv("PG_DB", "movie_dw")
-PG_USER     = os.getenv("PG_USER", "airflow")
-PG_PASSWORD = os.getenv("PG_PASSWORD", "airflow")
-PG_URL      = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
-PG_PROPS    = {"user": PG_USER, "password": PG_PASSWORD, "driver": "org.postgresql.Driver"}
+df_movies = spark.read.parquet('s3a://silver/merged/movies/').filter(F.col('movie_id').cast('int').isNotNull()).filter(F.col('movie_id').isNotNull())
+df_reviews = spark.read.parquet('s3a://silver/merged/reviews/')
+print(f'Movies: {df_movies.count()}, Reviews: {df_reviews.count()}')
 
-S3_MOVIES  = f"s3a://{SILVER_BUCKET}/merged/movies/"
-S3_REVIEWS = f"s3a://{SILVER_BUCKET}/merged/reviews/"
+dim_movie = (df_movies.select(
+    F.col('movie_id').cast(IntegerType()),
+    'title',
+    F.to_date('release_date').alias('release_date'),
+    F.col('rating').alias('imdb_rating'),
+    F.col('description').alias('overview'),
+    F.lit(None).cast('string').alias('imdb_id'),
+    F.lit(None).cast('string').alias('tmdb_id'),
+    F.lit(None).cast('string').alias('original_language'),
+    F.lit(None).cast('bigint').alias('duration_seconds'),
+    F.lit(None).cast('double').alias('tmdb_rating'),
+    F.current_date().alias('effective_date'),
+    F.lit(None).cast('date').alias('end_date'),
+    F.lit(True).alias('is_current'),
+).dropDuplicates(['movie_id']))
+dim_movie.write.jdbc(PG_URL, 'dim_movie', mode='append', properties=PG_PROPS)
+print(f'dim_movie: {dim_movie.count()} rows')
 
-# ── SparkSession ──────────────────────────────────────────────────────────────
-spark = (
-    SparkSession.builder
-    .appName("GoldLayer")
-    .config("spark.hadoop.fs.s3a.endpoint",            f"http://{MINIO_ENDPOINT}")
-    .config("spark.hadoop.fs.s3a.access.key",          MINIO_ACCESS)
-    .config("spark.hadoop.fs.s3a.secret.key",          MINIO_SECRET)
-    .config("spark.hadoop.fs.s3a.path.style.access",   "true")
-    .config("spark.hadoop.fs.s3a.impl",                "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.jars.packages",
-            "org.apache.hadoop:hadoop-aws:3.3.4,"
-            "com.amazonaws:aws-java-sdk-bundle:1.12.262,"
-            "org.postgresql:postgresql:42.6.0")
-    .getOrCreate()
-)
-spark.sparkContext.setLogLevel("WARN")
+dim_author = (df_reviews.select(F.col('author').alias('author_name'))
+    .dropDuplicates(['author_name'])
+    .withColumn('author_id', F.monotonically_increasing_id().cast(IntegerType()))
+    .select('author_id', 'author_name'))
+dim_author.write.jdbc(PG_URL, 'dim_author', mode='append', properties=PG_PROPS)
+print(f'dim_author: {dim_author.count()} rows')
 
-# ── Đọc Silver ────────────────────────────────────────────────────────────────
-print("📖 Đọc data từ Silver layer...")
-df_movies  = spark.read.parquet(S3_MOVIES)
-df_reviews = spark.read.parquet(S3_REVIEWS)
+dim_date = (df_reviews.select(F.to_date(F.current_timestamp()).alias('full_date'))
+    .dropDuplicates(['full_date'])
+    .withColumn('date_id', F.date_format('full_date', 'yyyyMMdd'))
+    .withColumn('year', F.year('full_date'))
+    .withColumn('month', F.month('full_date'))
+    .withColumn('day', F.dayofmonth('full_date'))
+    .withColumn('quarter', F.quarter('full_date'))
+    .withColumn('day_of_week', F.dayofweek('full_date'))
+    .select('date_id', 'full_date', 'year', 'month', 'day', 'quarter', 'day_of_week'))
+dim_date.write.jdbc(PG_URL, 'dim_date', mode='append', properties=PG_PROPS)
+print(f'dim_date: {dim_date.count()} rows')
 
-print(f"   Movies : {df_movies.count()} rows")
-print(f"   Reviews: {df_reviews.count()} rows")
+dim_review_text = (df_reviews
+    .withColumn('review_id', F.concat(F.col('movie_id').cast('string'), F.lit('_'), F.col('author')))
+    .select('review_id', F.col('content').alias('review_text'), F.length('content').alias('review_text_length'))
+    .dropDuplicates(['review_id']))
+dim_review_text.write.jdbc(PG_URL, 'dim_review_text', mode='append', properties=PG_PROPS)
+print(f'dim_review_text: {dim_review_text.count()} rows')
 
-# ── dim_movie ─────────────────────────────────────────────────────────────────
-print("\n🎬 Tạo dim_movie...")
-dim_movie = (
-    df_movies
-    .select(
-        F.monotonically_increasing_id().cast(IntegerType()).alias("movie_id"),
-        "title",
-        F.to_date("release_date").alias("release_date"),
-        F.col("rating").alias("imdb_rating"),
-        F.col("vote_count").alias("imdb_vote_count"),
-        F.col("description").alias("overview"),
-        F.col("source").alias("source_system"),
-    )
-    .dropDuplicates(["title"])
-)
-dim_movie.write.jdbc(PG_URL, "dim_movie", mode="append", properties=PG_PROPS)
-print(f"   ✅ dim_movie: {dim_movie.count()} rows")
+current_date_id = spark.sql("SELECT date_format(current_date(), 'yyyyMMdd') as d").first()[0]
+fact = (df_reviews
+    .join(dim_author.select('author_id', 'author_name'), df_reviews.author == dim_author.author_name, 'left')
+    .withColumn('review_id', F.concat(F.col('movie_id').cast('string'), F.lit('_'), F.col('author')))
+    .withColumn('source_id', F.when(F.col('source') == 'imdb', 1).otherwise(2))
+    .withColumn('sentiment_id', F.when(F.col('rating') >= 6, 1).otherwise(0))
+    .withColumn('sentiment_confidence', F.col('rating') / 10)
+    .withColumn('date_id', F.lit(current_date_id))
+    .withColumn('created_date', F.current_timestamp())
+    .withColumn('ingestion_id', F.lit(None).cast('string'))
+    .select('review_id', F.col('movie_id').cast(IntegerType()), 'author_id', 'date_id', 'source_id', 'sentiment_id', F.col('rating').cast(IntegerType()), 'sentiment_confidence', 'created_date', 'ingestion_id')
+    .dropDuplicates(['review_id']))
+fact.write.jdbc(PG_URL, 'fact_reviews', mode='append', properties=PG_PROPS)
+print(f'fact_reviews: {fact.count()} rows')
 
-# ── dim_author ────────────────────────────────────────────────────────────────
-print("\n👤 Tạo dim_author...")
-dim_author = (
-    df_reviews
-    .select("author", F.col("source").alias("source_system"))
-    .dropDuplicates(["author"])
-    .withColumn("author_id", F.monotonically_increasing_id().cast(IntegerType()))
-    .select("author_id", "author", "source_system")
-)
-dim_author.write.jdbc(PG_URL, "dim_author", mode="append", properties=PG_PROPS)
-print(f"   ✅ dim_author: {dim_author.count()} rows")
-
-# ── dim_date ──────────────────────────────────────────────────────────────────
-print("\n📅 Tạo dim_date...")
-dim_date = (
-    df_reviews
-    .select(F.to_date("created_at").alias("full_date"))
-    .dropDuplicates(["full_date"])
-    .withColumn("date_id",     F.monotonically_increasing_id().cast(IntegerType()))
-    .withColumn("year",        F.year("full_date"))
-    .withColumn("month",       F.month("full_date"))
-    .withColumn("day",         F.dayofmonth("full_date"))
-    .withColumn("quarter",     F.quarter("full_date"))
-    .withColumn("day_of_week", F.dayofweek("full_date"))
-    .select("date_id", "full_date", "year", "month", "day", "quarter", "day_of_week")
-)
-dim_date.write.jdbc(PG_URL, "dim_date", mode="append", properties=PG_PROPS)
-print(f"   ✅ dim_date: {dim_date.count()} rows")
-
-# ── dim_sentiment ─────────────────────────────────────────────────────────────
-print("\n😊 Tạo dim_sentiment...")
-dim_sentiment_data = [
-    (1, "positive", 1),
-    (2, "negative", 0),
-]
-dim_sentiment = spark.createDataFrame(
-    dim_sentiment_data, ["sentiment_id", "label", "prediction_sentiment"]
-)
-dim_sentiment.write.jdbc(PG_URL, "dim_sentiment", mode="append", properties=PG_PROPS)
-print(f"   ✅ dim_sentiment: {dim_sentiment.count()} rows")
-
-# ── fact_reviews ──────────────────────────────────────────────────────────────
-print("\n📝 Tạo fact_reviews...")
-
-# Join để lấy movie_id
-reviews_with_movie = df_reviews.join(
-    dim_movie.select("movie_id", "imdb_id", "tmdb_id"),
-    on=(df_reviews.imdb_id == dim_movie.imdb_id) | (df_reviews.tmdb_id == dim_movie.tmdb_id),
-    how="left"
-)
-
-# Join để lấy author_id
-reviews_with_author = reviews_with_movie.join(
-    dim_author.select("author_id", "author"),
-    on="author",
-    how="left"
-)
-
-# Join để lấy date_id
-reviews_with_date = reviews_with_author.join(
-    dim_date.select("date_id", "full_date"),
-    on=(F.to_date(reviews_with_author.created_at) == dim_date.full_date),
-    how="left"
-)
-
-# Gán sentiment_id dựa theo rating
-fact_reviews = (
-    reviews_with_date
-    .withColumn("sentiment_score", F.col("rating") / 10)
-    .withColumn("sentiment_id",
-    F.when(F.col("sentiment_score") >= 0.6, 1)
-     .otherwise(2)
-)
-    .select(
-        F.col("review_id"),
-        F.col("movie_id"),
-        F.col("author_id"),
-        F.col("date_id"),
-        F.col("sentiment_id"),
-        F.col("rating"),
-        F.col("sentiment_score"),
-        F.col("content"),
-        F.col("source_system"),
-        F.col("ingestion_id"),
-    )
-    .dropDuplicates(["review_id"])
-)
-
-fact_reviews.write.jdbc(PG_URL, "fact_reviews", mode="append", properties=PG_PROPS)
-print(f"   ✅ fact_reviews: {fact_reviews.count()} rows")
-
-print("\n🎉 Gold layer hoàn tất!")
+print('Gold layer hoan tat!')
 spark.stop()
