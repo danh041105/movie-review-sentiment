@@ -1,12 +1,13 @@
 import os
 import sys
 from datetime import datetime
-from common.spark_utils import get_spark_session
 from pyspark.sql import functions as F
-from common.spark_utils import write_data_to_minio
+from transformation.common.spark_utils import get_spark_session, write_data_to_minio
 SILVER_BUCKET = "silver"
 def create_training_dataset(target_date=None):
-    spark = get_spark_session("ABSA_Training_Data_Prep")  
+    spark = get_spark_session("merge_reviews")  
+    if target_date is None:
+        target_date = datetime.now().strftime("%Y-%m-%d")
     date_path = target_date.replace("-", "/")
     imdb_path = f"s3a://{SILVER_BUCKET}/reviews/imdb/{date_path}/*.snappy.parquet"
     tmdb_path = f"s3a://{SILVER_BUCKET}/reviews/tmdb/{date_path}/*.snappy.parquet"
@@ -17,11 +18,15 @@ def create_training_dataset(target_date=None):
     tmdb_df = spark.read.parquet(tmdb_path)
     
     full_df = imdb_df.unionByName(tmdb_df).select(
-        "review_id", 
-        "imdb_id", 
+        "review_id",
+        "tmdb_id", 
+        "imdb_id",
+        "author", 
         "content", 
         "rating",
-        "source_system"
+        "source_system",
+        "created_at",
+        "ingestion_id"
     )
     # 3. Làm sạch dữ liệu cấp độ Dataset
     # - Loại bỏ trùng lặp dựa trên review_id

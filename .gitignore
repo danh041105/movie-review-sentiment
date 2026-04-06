@@ -6,3 +6,6 @@ logs/
 __pycache__/
 docker-data/
 models/
+config/
+logs/
+plugins/

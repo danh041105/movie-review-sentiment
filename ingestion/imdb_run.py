@@ -1,10 +1,10 @@
 import time
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from imdb.movies import fetch_movie_ids, ingest_all_movies
-from imdb.reviews import ingest_reviews_movie
+from ingestion.imdb.movies import fetch_movie_ids, ingest_all_movies
+from ingestion.imdb.reviews import ingest_reviews_movie
 
-def main(movie_limit=100, reviews_per_movie=600, max_workers=10):
+def main(movie_limit=100, reviews_per_movie=2000, max_workers=15):
     start_time = time.time()
     print(f"[START] IMDb Pipeline: {movie_limit} phim | {reviews_per_movie} reviews/phim")
     print("=" * 40)
@@ -21,15 +21,15 @@ def main(movie_limit=100, reviews_per_movie=600, max_workers=10):
 
     all_movies = ingest_all_movies(movie_ids)
     if not all_movies:
-        print("❌ Phase 1 thất bại: Không lấy được Metadata.")
+        print("Phase 1 thất bại: Không lấy được Metadata.")
         return
     phase1_duration = time.time() - phase1_start
-    print(f"⏱️ Phase 1 hoàn tất: {len(all_movies)} phim trong {round(phase1_duration, 2)}s\n")
+    print(f"Phase 1 hoàn tất: {len(all_movies)} phim trong {round(phase1_duration, 2)}s\n")
 
     # -------------------------------------------------------
     # PHASE 2: Cào reviews phim
     # -------------------------------------------------------
-    print(f"💬 Phase 2: Cào reviews ({max_workers} luồng song song)...")
+    print(f"Phase 2: Cào reviews ({max_workers} luồng song song)...")
     phase2_start = time.time()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -44,7 +44,7 @@ def main(movie_limit=100, reviews_per_movie=600, max_workers=10):
             print(f"  [{completed}/{len(movie_ids)}] ✅ {result}")
 
     phase2_duration = time.time() - phase2_start
-    print(f"⏱️  Phase 2 hoàn tất: {len(movie_ids)} phim trong {round(phase2_duration, 2)}s\n")
+    print(f"Phase 2 hoàn tất: {len(movie_ids)} phim trong {round(phase2_duration, 2)}s\n")
 
     # -------------------------------------------------------
     # Tổng kết

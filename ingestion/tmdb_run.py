@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
-from tmdb.movies import ingest_tmdb_movie, fetch_trending_movie_ids
-from tmdb.reviews import ingest_tmdb_reviews
+from ingestion.tmdb.movies import ingest_tmdb_movie, fetch_trending_movie_ids
+from ingestion.tmdb.reviews import ingest_tmdb_reviews
 
 def process_single_tmdb_movie(movie_id, max_reviews):
     m_status = ingest_tmdb_movie(movie_id)

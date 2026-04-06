@@ -16,4 +16,3 @@
 1. Chạy 2 file movies_run và silver_run
 2. Chạy tiếp merge_silver để hoàn tất quá trình
 ### 5. Chạy xử lý NLP
-# So sánh 2 mô hình Bert và RoBert
