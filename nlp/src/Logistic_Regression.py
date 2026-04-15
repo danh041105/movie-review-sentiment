@@ -6,18 +6,16 @@ from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, CountVectorizer
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 from pyspark.ml import Pipeline
+from pyspark.ml.functions import vector_to_array
 from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from transformation.common.spark_utils import get_spark_session, write_data_to_minio, get_layer_path
 
-endpoint_url = os.getenv("ENDPOINT_URL")
-key = os.getenv("MINIO_ROOT_USER")
-secret = os.getenv("MINIO_ROOT_PASSWORD")
-bucket_name = "silver"
-base_prefix = "nlp/dataset"
-target_date = datetime.now().strftime("%Y-%m-%d")
+BUCKET_NAME = "silver"
+BASE_PREFIX = "nlp/dataset"
 
 def load_data_for_nlp(s3a_path):
+    endpoint_url = os.getenv("ENDPOINT_URL")
     spark = get_spark_session("SparkML_Pipeline")
     print(f"[*] Đang kết nối tới MinIO tại {endpoint_url}...")
     print(f"[*] Nạp dữ liệu từ: {s3a_path}")
@@ -28,13 +26,16 @@ def load_data_for_nlp(s3a_path):
         print(f"[!] Lỗi khi nạp dữ liệu trực tiếp: {e}")
         return None
     
-def get_clean_df():
-    s3_path = get_layer_path("s3a://", bucket_name, base_prefix, target_date) 
+def get_clean_df(target_date=None):
+    # Lấy target_date tại thời điểm CHẠY hàm, không phải lúc Airflow parse file
+    if target_date is None:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+    s3_path = get_layer_path("s3a://", BUCKET_NAME, BASE_PREFIX, target_date) 
     print(s3_path)
     df = load_data_for_nlp(s3_path + "*.parquet")
     df = df.withColumn("label", F.when(F.col("rating") >= 7, 1.0).otherwise(0.0))
     clean_df = df.withColumn("clean_content", F.lower(F.col("content")))
-# 2. Xóa thẻ HTML (VD: <br />, <i>)
+    # 2. Xóa thẻ HTML (VD: <br />, <i>)
     clean_df = clean_df.withColumn("clean_content", F.regexp_replace(F.col("clean_content"), "<.*?>", " "))
     # 3. Xóa các ký tự đặc biệt, chỉ giữ lại chữ cái a-z, số 0-9 và khoảng trắng
     clean_df = clean_df.withColumn("clean_content", F.regexp_replace(F.col("clean_content"), "[^a-z0-9\\s]", " "))
@@ -47,14 +48,18 @@ def get_clean_df():
     print(f"[*] Số lượng bản ghi giữ lại sau khi làm sạch: {clean_df.count()}")
     return clean_df
 
-def train_sentiment_model():
-    clean_df = get_clean_df()
+def train_sentiment_model(target_date=None):
+    # Lấy target_date tại thời điểm CHẠY, không phải lúc parse
+    if target_date is None:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+
+    clean_df = get_clean_df(target_date)
     labeled_df = clean_df.filter(F.col("rating").isNotNull())
     train, test = labeled_df.randomSplit([0.8, 0.2], seed=42)
     print(f"[*] Số mẫu Huấn luyện (Train): {train.count()}")
     print(f"[*] Số mẫu Kiểm thử (Test): {test.count()}")
     print("BẮT ĐẦU XÂY DỰNG PIPELINE VÀ HUẤN LUYỆN...")
-# 1. Các bước NLP biến đổi chữ thành số
+    # 1. Các bước NLP biến đổi chữ thành số
     tokenizer = RegexTokenizer(inputCol="clean_content", outputCol="words", pattern="\\W")
     remover = StopWordsRemover(inputCol="words", outputCol="filtered_words")
     cv = CountVectorizer(inputCol="filtered_words", outputCol="raw_features", vocabSize=10000)
@@ -68,7 +73,7 @@ def train_sentiment_model():
     model = pipeline.fit(train)
     print("Huấn luyện hoàn tất!")
     print("BẮT ĐẦU ĐÁNH GIÁ MÔ HÌNH...")
-# Dự đoán trên tập Test
+    # Dự đoán trên tập Test
     test_predictions = model.transform(test)
 
     # Chấm điểm
@@ -84,14 +89,7 @@ def train_sentiment_model():
     # Lưu ý: clean_df bao gồm cả 2275 dòng bị NULL rating
     all_predictions = model.transform(clean_df)
 
-    # Kiểm tra thử kết quả dự đoán của 2275 dòng NULL đó
-    # print("Kết quả AI dự đoán cho những dòng vốn bị NULL rating:")
-    # all_predictions.filter(F.col("rating").isNull()) \
-    #                .select("content", "prediction", "probability") \
-    #                .show(5, truncate=False)
     # Bước cuối: Chọn các cột cần thiết để lưu trữ
-    from pyspark.ml.functions import vector_to_array
-    F.col("probability")
     final_df = all_predictions.select(
         "ingestion_id",
         "review_id",
@@ -106,5 +104,6 @@ def train_sentiment_model():
         F.array_max(vector_to_array(F.col("probability"))).alias("sentiment_confidence")
     )
     output_path = "nlp/reviews_enriched"
-    write_data_to_minio(final_df, bucket_name, output_path, target_date)
+    write_data_to_minio(final_df, BUCKET_NAME, output_path, target_date)
+
 
