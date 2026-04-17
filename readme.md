@@ -8,11 +8,13 @@
 2. Tạo thêm `MINIO_ENDPOINT =<trong file docker-compose có>`
 3. Tạo thêm `MINIO_ROOT_USER =<trong file docker-compose có>`
 4. Tạo thêm `MINIO_ROOT_PASSWORD =<trong file docker-compose có>`
-### 3. Lấy dữ liệu về
-1. Chạy 2 file trong `ingestion`
-   - `tmdb_run`
-   - `imdb_run`
-### 4. Biến đổi dữ liệu
-1. Chạy 2 file movies_run và silver_run
-2. Chạy tiếp merge_silver để hoàn tất quá trình
-### 5. Chạy xử lý NLP
+5. Tạo thêm `TELEGRAM_BOT_TOKEN`
+6. Tạo thêm `TELEGRAM_CHAT_ID`
+7. Tạo thêm `REDIS_HOST`
+8. Tạo thêm `REDIS_PORT`
+9. Tạo thêm `POSTGRES_HOST`
+10. Tạo thêm `POSTGRES_PORT`
+11. Tạo thêm `POSTGRES_DB`
+12. Tạo thêm `POSTGRES_USER`
+13. Tạo thêm `POSTGRES_PASSWORD`
+### Mở Airflow và bấm Trigger DAG movie_sentiment_full_pipeline

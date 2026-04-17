@@ -14,10 +14,31 @@ def create_training_dataset(target_date=None):
     
     print(f"[*] Đang nạp dữ liệu từ: {imdb_path} và {tmdb_path}")
     
-    imdb_df = spark.read.parquet(imdb_path)
-    tmdb_df = spark.read.parquet(tmdb_path)
-    
-    full_df = imdb_df.unionByName(tmdb_df).select(
+    # Đọc từng nguồn riêng, bỏ qua nếu không có dữ liệu mới (Redis dedup skip hết)
+    dfs = []
+    try:
+        imdb_df = spark.read.parquet(imdb_path)
+        dfs.append(imdb_df)
+        print(f"[+] IMDB: nạp thành công")
+    except Exception as e:
+        print(f"[!] IMDB: không có dữ liệu mới cho ngày {target_date} (skip)")
+
+    try:
+        tmdb_df = spark.read.parquet(tmdb_path)
+        dfs.append(tmdb_df)
+        print(f"[+] TMDB: nạp thành công")
+    except Exception as e:
+        print(f"[!] TMDB: không có dữ liệu mới cho ngày {target_date} (skip)")
+
+    # Nếu cả 2 nguồn đều không có dữ liệu → dừng lại, không crash
+    if not dfs:
+        print(f"[!] Không có reviews mới từ bất kỳ nguồn nào cho ngày {target_date}. Bỏ qua merge.")
+        spark.stop()
+        return
+
+    # Union các nguồn có dữ liệu
+    from functools import reduce
+    full_df = reduce(lambda a, b: a.unionByName(b), dfs).select(
         "review_id",
         "tmdb_id", 
         "imdb_id",

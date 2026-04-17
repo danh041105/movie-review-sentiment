@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from ingestion.common.upload_data import upload_to_minio
+from ingestion.common.redis_utils import is_reviews_changed, save_reviews_state
 
 load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
@@ -39,6 +40,12 @@ def ingest_tmdb_reviews(movie_id, max_reviews):
                 if page >= data.get("total_pages", 0): break
             page += 1
         if all_reviews:
+            # ===== REDIS DEDUP: So sánh hash với lần cào trước =====
+            if not is_reviews_changed("tmdb", str(movie_id), all_reviews):
+                save_reviews_state("tmdb", str(movie_id), all_reviews, review_count=len(all_reviews))
+                return f"Reviews TMDB SKIP (không đổi): {movie_id} ({len(all_reviews)})"
+
+            # Reviews mới hoặc đã thay đổi → upload lên MinIO
             upload_to_minio(
                 raw_data=all_reviews,
                 source="tmdb",
@@ -47,7 +54,8 @@ def ingest_tmdb_reviews(movie_id, max_reviews):
                 http_status=200,
                 search_params={"movie_id": movie_id}
             )
-            return f"Reviews TMDB OK: {movie_id} ({len(all_reviews)})"
+            save_reviews_state("tmdb", str(movie_id), all_reviews, review_count=len(all_reviews))
+            return f"Reviews TMDB OK (mới/cập nhật): {movie_id} ({len(all_reviews)})"
         return f"Reviews TMDB: {movie_id} (No data)"
     except Exception as e:
         return f"Reviews TMDB Error {movie_id}: {e}"

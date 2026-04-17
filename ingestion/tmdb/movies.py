@@ -4,6 +4,7 @@ import requests
 from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from ingestion.common.upload_data import upload_to_minio
+from ingestion.common.redis_utils import is_movie_changed, save_movie_state
 
 load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
@@ -61,6 +62,14 @@ def ingest_tmdb_movie(movie_id):
         movie_data = response.json()
         if "genres" in movie_data and isinstance(movie_data["genres"], list):
             movie_data["genres"] = [g["name"] for g in movie_data["genres"] if "name" in g]
+
+        # ===== REDIS DEDUP: So sánh hash với lần cào trước =====
+        if not is_movie_changed("tmdb", str(movie_id), movie_data):
+            # Dữ liệu giống hệt → chỉ refresh TTL, không upload lại
+            save_movie_state("tmdb", str(movie_id), movie_data)
+            return f"Metadata TMDB SKIP (không đổi): {movie_id}"
+
+        # Dữ liệu mới hoặc đã thay đổi → upload lên MinIO
         upload_to_minio(
             raw_data=[movie_data],
             source="tmdb",
@@ -69,6 +78,7 @@ def ingest_tmdb_movie(movie_id):
             http_status=200,
             search_params={"movie_id": movie_id}
         )
-        return f"Metadata TMDB OK: {movie_id}"
+        save_movie_state("tmdb", str(movie_id), movie_data)
+        return f"Metadata TMDB OK (mới/cập nhật): {movie_id}"
     except Exception as e:
         return f"Metadata TMDB Error {movie_id}: {str(e)}"

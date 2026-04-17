@@ -2,9 +2,11 @@ import requests
 import json
 import time
 import sys
+import random
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from ingestion.common.upload_data import upload_to_minio
+from ingestion.common.redis_utils import is_reviews_changed, save_reviews_state
 
 GRAPHQL_URL = "https://caching.graphql.imdb.com/"
 PAGE_SIZE = 25
@@ -81,7 +83,8 @@ def fetch_reviews(movie_id, max_reviews):
             cursor = page_info.get("endCursor")
             if len(all_reviews) >= max_reviews:
                 break
-            time.sleep(1)
+            # Dùng random sleep (2-5s) thay vì fixed 1s để tránh HTTP 429 Too Many Requests
+            time.sleep(random.uniform(2, 5))
         except Exception as e:
             print("Error:", e)
             break
@@ -90,6 +93,13 @@ def fetch_reviews(movie_id, max_reviews):
 def ingest_reviews_movie(movie_id, review_per_movie):
     reviews = fetch_reviews(movie_id, max_reviews=review_per_movie)
     if reviews:
+        # ===== REDIS DEDUP: So sánh hash với lần cào trước =====
+        if not is_reviews_changed("imdb", str(movie_id), reviews):
+            # Reviews giống hệt → chỉ refresh TTL, không upload lại
+            save_reviews_state("imdb", str(movie_id), reviews, review_count=len(reviews))
+            return f"Reviews IMDB SKIP (không đổi): {movie_id} ({len(reviews)} reviews)"
+
+        # Reviews mới hoặc đã thay đổi → upload lên MinIO
         upload_to_minio(
             raw_data=reviews,
             source="imdb",
@@ -98,4 +108,6 @@ def ingest_reviews_movie(movie_id, review_per_movie):
             http_status=200,
             search_params={"movie_id": movie_id, "count": len(reviews)}
         )
-    return f"Done {movie_id}"
+        save_reviews_state("imdb", str(movie_id), reviews, review_count=len(reviews))
+        return f"Reviews IMDB OK (mới/cập nhật): {movie_id} ({len(reviews)} reviews)"
+    return f"Reviews IMDB: {movie_id} (No data)"

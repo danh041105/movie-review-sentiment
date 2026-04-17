@@ -17,7 +17,12 @@ def load_fact_reviews(target_date=None):
     silver_bucket = "silver"
     reviews_path = get_layer_path("s3a://", silver_bucket, "nlp/reviews_enriched", target_date)
     print(f"[*] Đang đọc dữ liệu review từ: {reviews_path}")
-    reviews_df = spark.read.parquet(reviews_path + "*.parquet")
+    try:
+        reviews_df = spark.read.parquet(reviews_path + "*.parquet")
+    except Exception as e:
+        print(f"[!] Bỏ qua cập nhật Fact Table: Không tìm thấy file Parquet tại {reviews_path}. (Có thể do không có data review mới hôm nay).")
+        spark.stop()
+        return
     
     # =========================================================
     # BƯỚC 2: CHUYỂN ĐỔI VÀ TẠO CÁC KHÓA (KEYS) CƠ BẢN

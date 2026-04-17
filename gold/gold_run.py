@@ -6,9 +6,12 @@ from gold.elt.load_facts import load_fact_reviews
 # Nếu hàm xử lý phim của bạn có tên khác (ví dụ: load_movie_to_db), hãy đổi tên cho khớp nhé
 # from gold.etl.load_dimensions import load_movie_to_db 
 
-def run_gold_layer(target_date):
+def run_gold_layer(target_date=None):
+    if target_date is None:
+        from datetime import datetime
+        target_date = datetime.now().strftime("%Y-%m-%d")
     print(f"\n=======================================================")
-    print(f"🚀 BẮT ĐẦU CHẠY PIPELINE TẦNG GOLD - NGÀY {target_date}")
+    print(f"BẮT ĐẦU CHẠY PIPELINE TẦNG GOLD - NGÀY {target_date}")
     print(f"=======================================================\n")
 
     try:
@@ -21,11 +24,11 @@ def run_gold_layer(target_date):
         load_fact_reviews(target_date)
 
         print(f"\n=======================================================")
-        print(f"✅ HOÀN TẤT THÀNH CÔNG TẦNG GOLD - NGÀY {target_date}")
+        print(f"HOÀN TẤT THÀNH CÔNG TẦNG GOLD - NGÀY {target_date}")
         print(f"=======================================================\n")
 
     except Exception as e:
-        print(f"\n[!] ❌ LỖI NGHIÊM TRỌNG TRONG QUÁ TRÌNH CHẠY TẦNG GOLD: {e}")
+        print(f"\n[!] LỖI NGHIÊM TRỌNG TRONG QUÁ TRÌNH CHẠY TẦNG GOLD: {e}")
         # Báo lỗi ra hệ thống để Airflow biết Task này đã thất bại (Red Task)
         sys.exit(1)
 

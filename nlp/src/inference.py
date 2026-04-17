@@ -8,6 +8,10 @@ Script này:
   3. Làm sạch text → predict sentiment bằng model
   4. Ghi kết quả enriched reviews vào silver/nlp/reviews_enriched/{date}/
 
+Model sử dụng: Logistic Regression với class_weight='balanced'
+  - Tham số tối ưu: C=1, solver='saga' (scikit-learn) / regParam=1.0 (Spark)
+  - Xử lý mất cân bằng lớp qua weightCol khi train
+
 Ưu điểm:
   - KHÔNG train lại model mỗi ngày → tiết kiệm tài nguyên
   - Chỉ xử lý dữ liệu mới → pipeline nhanh hơn rất nhiều
@@ -103,8 +107,11 @@ def predict_daily_reviews(target_date=None):
         spark.stop()
         return
 
-    # ===== BƯỚC 3: Clean text + Gán label tạm (cho format đúng) =====
+    # ===== BƯỚC 3: Clean text =====
+    # Thêm cột classWeight giả (= 1.0) vì model pipeline yêu cầu cột này tồn tại
+    # Trọng số này KHÔNG ảnh hưởng đến kết quả predict, chỉ cần khi train
     df = df.withColumn("label", F.when(F.col("rating") >= 7, 1.0).otherwise(0.0))
+    df = df.withColumn("classWeight", F.lit(1.0))
     clean_df = _clean_text(df)
     print(f"[*] Sau khi làm sạch: {clean_df.count()} reviews")
 
@@ -130,7 +137,11 @@ def predict_daily_reviews(target_date=None):
     final_count = final_df.count()
     print(f"[*] Đã predict xong {final_count} reviews")
 
-    # ===== BƯỚC 5: Ghi kết quả =====
+    # ===== BƯỚC 5: Thống kê kết quả =====
+    print("[*] Phân phối sentiment dự đoán:")
+    predictions.groupBy("prediction").count().show()
+
+    # ===== BƯỚC 6: Ghi kết quả =====
     write_data_to_minio(final_df, BUCKET_NAME, OUTPUT_PREFIX, target_date)
     print(f"[+] ✅ Hoàn tất inference ngày {target_date}: {final_count} reviews")
 

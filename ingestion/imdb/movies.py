@@ -3,6 +3,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from ingestion.common.upload_data import upload_to_minio
+from ingestion.common.redis_utils import is_movie_changed, save_movie_state
 
 GRAPHQL_URL = "https://caching.graphql.imdb.com/"
 HEADERS = {
@@ -100,15 +101,34 @@ def ingest_all_movies(movie_ids):
             }
             bulk_metadata.append(movie_data)
         
-        if bulk_metadata:
+        # ===== REDIS DEDUP: Chỉ upload phim có dữ liệu thay đổi =====
+        changed_movies = []
+        skipped_count = 0
+
+        for movie_data in bulk_metadata:
+            movie_id = movie_data.get('imdb_id')
+            if is_movie_changed("imdb", movie_id, movie_data):
+                changed_movies.append(movie_data)
+            else:
+                skipped_count += 1
+
+        print(f"[Dedup] ✅ {len(changed_movies)} phim mới/thay đổi | ⏭️ {skipped_count} phim giống hệt (skip)")
+
+        # Chỉ upload những phim thực sự thay đổi
+        if changed_movies:
             upload_to_minio(
-                raw_data=bulk_metadata,
+                raw_data=changed_movies,
                 source="imdb",
                 entity="movies",
                 methods="Bulk_Scraping",
                 http_status=200,
-                search_params={"movie_count": len(bulk_metadata)}
+                search_params={"movie_count": len(changed_movies)}
             )
+
+        # Lưu state cho TẤT CẢ phim (kể cả unchanged) để refresh TTL
+        for movie_data in bulk_metadata:
+            save_movie_state("imdb", movie_data.get('imdb_id'), movie_data)
+
         return bulk_metadata
 
     except Exception as e:
