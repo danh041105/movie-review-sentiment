@@ -28,10 +28,10 @@ def transform_tmdb_reviews(target_date):
         F.col("raw_payload.author_details.rating").alias("rating"),
         F.col("raw_payload.content").alias("content"),
         F.col("raw_payload.created_at").alias("created_at")
-    ).filter(F.col("tmdb_id").isNotNull())
+    ).dropna(subset=["movie_id", "content", "created_at"])
 
     # Xử lý trùng lặp
-    window_spec = Window.partitionBy("review_id").orderBy(F.desc("ingestion_timestamp"))
+    window_spec = Window.partitionBy("review_id", "author").orderBy(F.desc("ingestion_timestamp"))
     dedup_df = transform_df.withColumn("rn", F.row_number().over(window_spec)) \
                                      .filter(F.col("rn") == 1) \
                                      .drop("rn")

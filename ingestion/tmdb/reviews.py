@@ -1,6 +1,7 @@
 import os
 import sys
 from dotenv import load_dotenv
+import json
 import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from ingestion.common.upload_data import upload_to_minio
@@ -17,7 +18,7 @@ def get_imdb_id(movie_id):
     data = response.json()
     return data.get("imdb_id")
 
-def ingest_tmdb_reviews(movie_id, max_reviews):
+def get_movie_reviews(movie_id, max_reviews):
     page = 1
     all_reviews = []
     try:
@@ -39,6 +40,18 @@ def ingest_tmdb_reviews(movie_id, max_reviews):
                     all_reviews.append(reviews)
                 if page >= data.get("total_pages", 0): break
             page += 1
+    except Exception as e:
+        return f"Reviews TMDB Error {movie_id}: {e}"
+    return all_reviews
+
+def ingest_tmdb_reviews(movie_id, max_reviews):
+    all_reviews = get_movie_reviews(movie_id, max_reviews)
+    
+    # Nếu get_movie_reviews trả về string (có nghĩa là có lỗi), ném ra lỗi hoặc return nguyên chuỗi đó
+    if isinstance(all_reviews, str):
+        return all_reviews
+
+    try:
         if all_reviews:
             # ===== REDIS DEDUP: So sánh hash với lần cào trước =====
             if not is_reviews_changed("tmdb", str(movie_id), all_reviews):
@@ -59,3 +72,8 @@ def ingest_tmdb_reviews(movie_id, max_reviews):
         return f"Reviews TMDB: {movie_id} (No data)"
     except Exception as e:
         return f"Reviews TMDB Error {movie_id}: {e}"
+
+# if __name__ == "__main__":
+#     movie_details = get_movie_reviews("687163", 200)
+#     movie_details_json = json.dumps(movie_details, indent=4)
+#     print(movie_details_json)

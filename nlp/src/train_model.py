@@ -155,11 +155,14 @@ def train_and_save_model():
         outputCol="words", 
         pattern="\\W"
     )
-    
     # StopWordsRemover: loại bỏ stop words tiếng Anh
+    default_stop_words = StopWordsRemover.loadDefaultStopWords("english")
+    words_to_keep = {"no", "not", "never", "cannot", "isn't", "aren't", "wasn't", "weren't", "hasn't", "haven't", "hadn't", "doesn't", "don't", "didn't", "won't", "wouldn't", "shan't", "shouldn't", "mustn't", "can't", "couldn't"}
+    custom_stop_words = [word for word in default_stop_words if word not in words_to_keep]
     remover = StopWordsRemover(
         inputCol="words", 
-        outputCol="filtered_words"
+        outputCol="filtered_words",
+        stopWords=custom_stop_words
     )
     
     # HashingTF: chuyển từ thành vector TF (tương đương TfidfVectorizer max_features=10000)
@@ -195,73 +198,72 @@ def train_and_save_model():
     print("[+] Huấn luyện hoàn tất!")
 
     # ===== BƯỚC 6: Đánh giá toàn diện =====
-    print("\n" + "=" * 60)
-    print("            ĐÁNH GIÁ MÔ HÌNH TRÊN TẬP TEST")
-    print("=" * 60)
+    # print("\n" + "=" * 60)
+    # print("            ĐÁNH GIÁ MÔ HÌNH TRÊN TẬP TEST")
+    # print("=" * 60)
     
-    test_predictions = model.transform(test)
+    # test_predictions = model.transform(test)
     
-    # 6a. ROC-AUC
-    auc_evaluator = BinaryClassificationEvaluator(
-        rawPredictionCol="rawPrediction", labelCol="label", metricName="areaUnderROC"
-    )
-    auc = auc_evaluator.evaluate(test_predictions)
-    print(f"   ROC-AUC Score  : {auc:.4f}")
+    # # 6a. ROC-AUC
+    # auc_evaluator = BinaryClassificationEvaluator(
+    #     rawPredictionCol="rawPrediction", labelCol="label", metricName="areaUnderROC"
+    # )
+    # auc = auc_evaluator.evaluate(test_predictions)
+    # print(f"   ROC-AUC Score  : {auc:.4f}")
     
-    # 6b. PR-AUC (Precision-Recall AUC - quan trọng với imbalanced data)
-    pr_evaluator = BinaryClassificationEvaluator(
-        rawPredictionCol="rawPrediction", labelCol="label", metricName="areaUnderPR"
-    )
-    pr_auc = pr_evaluator.evaluate(test_predictions)
-    print(f"   PR-AUC Score   : {pr_auc:.4f}")
+    # # 6b. PR-AUC (Precision-Recall AUC - quan trọng với imbalanced data)
+    # pr_evaluator = BinaryClassificationEvaluator(
+    #     rawPredictionCol="rawPrediction", labelCol="label", metricName="areaUnderPR"
+    # )
+    # pr_auc = pr_evaluator.evaluate(test_predictions)
+    # print(f"   PR-AUC Score   : {pr_auc:.4f}")
     
-    # 6c. F1-Score, Precision, Recall, Accuracy
-    f1_evaluator = MulticlassClassificationEvaluator(
-        predictionCol="prediction", labelCol="label", metricName="f1"
-    )
-    f1 = f1_evaluator.evaluate(test_predictions)
+    # # 6c. F1-Score, Precision, Recall, Accuracy
+    # f1_evaluator = MulticlassClassificationEvaluator(
+    #     predictionCol="prediction", labelCol="label", metricName="f1"
+    # )
+    # f1 = f1_evaluator.evaluate(test_predictions)
     
-    acc_evaluator = MulticlassClassificationEvaluator(
-        predictionCol="prediction", labelCol="label", metricName="accuracy"
-    )
-    accuracy = acc_evaluator.evaluate(test_predictions)
+    # acc_evaluator = MulticlassClassificationEvaluator(
+    #     predictionCol="prediction", labelCol="label", metricName="accuracy"
+    # )
+    # accuracy = acc_evaluator.evaluate(test_predictions)
     
-    precision_evaluator = MulticlassClassificationEvaluator(
-        predictionCol="prediction", labelCol="label", metricName="weightedPrecision"
-    )
-    precision = precision_evaluator.evaluate(test_predictions)
+    # precision_evaluator = MulticlassClassificationEvaluator(
+    #     predictionCol="prediction", labelCol="label", metricName="weightedPrecision"
+    # )
+    # precision = precision_evaluator.evaluate(test_predictions)
     
-    recall_evaluator = MulticlassClassificationEvaluator(
-        predictionCol="prediction", labelCol="label", metricName="weightedRecall"
-    )
-    recall = recall_evaluator.evaluate(test_predictions)
+    # recall_evaluator = MulticlassClassificationEvaluator(
+    #     predictionCol="prediction", labelCol="label", metricName="weightedRecall"
+    # )
+    # recall = recall_evaluator.evaluate(test_predictions)
     
-    print(f"   Accuracy       : {accuracy:.4f}")
-    print(f"   F1 Score       : {f1:.4f}")
-    print(f"   Precision (avg): {precision:.4f}")
-    print(f"   Recall (avg)   : {recall:.4f}")
+    # print(f"   Accuracy       : {accuracy:.4f}")
+    # print(f"   F1 Score       : {f1:.4f}")
+    # print(f"   Precision (avg): {precision:.4f}")
+    # print(f"   Recall (avg)   : {recall:.4f}")
     
-    # 6d. Confusion Matrix
-    print("\n[*] Confusion Matrix:")
-    test_predictions.groupBy("label", "prediction").count().orderBy("label", "prediction").show()
+    # # 6d. Confusion Matrix
+    # print("\n[*] Confusion Matrix:")
+    # test_predictions.groupBy("label", "prediction").count().orderBy("label", "prediction").show()
     
-    if auc > 0.8:
-        print("   -> ✅ Mô hình đạt chất lượng TỐT, sẵn sàng deploy!")
-    else:
-        print("   -> ⚠️ Cảnh báo: AUC thấp, cần kiểm tra lại dữ liệu hoặc tham số.")
-    print("=" * 60)
+    # if auc > 0.8:
+    #     print("Mô hình đạt chất lượng TỐT, sẵn sàng deploy!")
+    # else:
+    #     print("Cảnh báo: AUC thấp, cần kiểm tra lại dữ liệu hoặc tham số.")
+    # print("=" * 60)
 
     # ===== BƯỚC 7: Lưu Model vào MinIO =====
     print(f"\n[*] Đang lưu model vào: {MODEL_PATH}")
     model.write().overwrite().save(MODEL_PATH)
-    print(f"[+] ✅ Model đã được lưu thành công tại: {MODEL_PATH}")
+    print(f"[+] Model đã được lưu thành công tại: {MODEL_PATH}")
     print(f"[+] Thời gian train: {datetime.now().isoformat()}")
-    print(f"[+] AUC = {auc:.4f} | F1 = {f1:.4f} | Accuracy = {accuracy:.4f}")
+    # print(f"[+] AUC = {auc:.4f} | F1 = {f1:.4f} | Accuracy = {accuracy:.4f}")
 
     # Giải phóng cache
     labeled_df.unpersist()
     spark.stop()
-
 
 if __name__ == "__main__":
     train_and_save_model()

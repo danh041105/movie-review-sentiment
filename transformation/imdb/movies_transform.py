@@ -34,7 +34,9 @@ def transform_imdb_movies(target_date = None):
         (F.col("raw_payload.duration_seconds")).alias("duration_seconds"),
         F.col("raw_payload.rating").cast("double").alias("imdb_rating"),
         F.col("raw_payload.vote_count").cast("long").alias("imdb_vote_count"),
-    ).filter(F.col("imdb_id").isNotNull())
+        F.col("raw_payload.production_budget").alias("production_budget"),
+        F.col("raw_payload.worldwide_gross").alias("worldwide_gross"),
+    ).dropna(subset=["imdb_id", "title", "release_date", "imdb_rating"])
 
     # Xử lý trùng lặp theo imdb_id
     window_spec = Window.partitionBy("imdb_id").orderBy(F.desc("ingestion_timestamp"))

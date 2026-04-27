@@ -81,9 +81,9 @@ def predict_daily_reviews(target_date=None):
         model = PipelineModel.load(MODEL_PATH)
         print("[+] Load model thành công!")
     except Exception as e:
-        print(f"[!] ❌ Không tìm thấy model tại {MODEL_PATH}")
-        print(f"[!] Hãy chạy train_model.py trước để tạo model.")
-        print(f"[!] Chi tiết lỗi: {e}")
+        print(f"[!]Không tìm thấy model tại {MODEL_PATH}")
+        print(f"[!]Hãy chạy train_model.py trước để tạo model.")
+        print(f"[!]Chi tiết lỗi: {e}")
         spark.stop()
         raise RuntimeError(f"Model không tồn tại tại {MODEL_PATH}. Chạy train_model.py trước!") from e
 
@@ -143,13 +143,12 @@ def predict_daily_reviews(target_date=None):
 
     # ===== BƯỚC 6: Ghi kết quả =====
     write_data_to_minio(final_df, BUCKET_NAME, OUTPUT_PREFIX, target_date)
-    print(f"[+] ✅ Hoàn tất inference ngày {target_date}: {final_count} reviews")
+    print(f"[+] Hoàn tất inference ngày {target_date}: {final_count} reviews")
 
     spark.stop()
 
 
 if __name__ == "__main__":
-    # Cho phép truyền ngày từ command line
     if len(sys.argv) > 1:
         predict_daily_reviews(sys.argv[1])
     else:

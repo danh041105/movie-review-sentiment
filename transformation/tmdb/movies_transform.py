@@ -32,12 +32,12 @@ def transform_tmdb_movies(target_date=None):
         F.col("raw_payload.original_language").alias("original_language"),
         F.to_date(F.col("raw_payload.release_date")).alias("release_date"),
         (F.col("raw_payload.runtime") * 60).cast("long").alias("duration_seconds"),
-        
         F.round(F.col("raw_payload.vote_average"), 2).cast("double").alias("tmdb_vote_average"),
         F.col("raw_payload.vote_count").cast("long").alias("tmdb_vote_count"),
-        
-        F.trim(F.col("raw_payload.overview")).alias("overview")
-    ).filter(F.col("imdb_id").isNotNull())
+        F.trim(F.col("raw_payload.overview")).alias("overview"),
+        F.col("raw_payload.budget").alias("budget"),
+        F.col("raw_payload.revenue").alias("revenue"),
+    ).dropna(subset=["tmdb_id", "title", "release_date", "tmdb_vote_average"])
 
     # 3. Deduplication: Lọc bản ghi mới nhất theo imdb_id
     window_spec = Window.partitionBy("imdb_id").orderBy(F.desc("ingestion_timestamp"))

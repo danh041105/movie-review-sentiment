@@ -32,7 +32,7 @@ query TitleReviewsRefine($const: ID!, $filter: ReviewsFilter, $first: Int!, \
                     text { originalText { plainText } }
                 }
             }
-            pageInfo {
+            pageInfo{
                 hasNextPage
                 endCursor
             }

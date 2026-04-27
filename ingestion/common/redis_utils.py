@@ -4,12 +4,8 @@ import hashlib
 import redis
 from datetime import datetime
 from dotenv import load_dotenv
-
 load_dotenv()
 
-# Khi chạy từ bên ngoài Docker (VS Code, terminal Windows),
-# Redis nằm ở localhost. Nhưng khi vào Docker, nó nằm ở tên host 'redis'.
-# Ta sẽ cấu trúc để Airflow dễ cấu hình qua env.
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_INGESTION_DB", "1"))  # DB 0 = Celery, DB 1 = Ingestion
@@ -33,9 +29,9 @@ def get_redis_client():
                 socket_connect_timeout=5
             )
             _redis_client.ping()
-            print(f"[Redis] ✅ Kết nối thành công tới {REDIS_HOST}:{REDIS_PORT} (DB={REDIS_DB})")
+            print(f"[Redis] Kết nối thành công tới {REDIS_HOST}:{REDIS_PORT} (DB={REDIS_DB})")
         except Exception as e:
-            print(f"[Redis] ⚠️ Không thể kết nối: {e}")
+            print(f"[Redis] Không thể kết nối: {e}")
             print(f"[Redis] Pipeline sẽ chạy bình thường KHÔNG có dedup.")
             _redis_client = None
     return _redis_client

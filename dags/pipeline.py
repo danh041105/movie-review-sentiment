@@ -16,7 +16,7 @@ if str(AIRFLOW_HOME) not in sys.path:
     sys.path.insert(0, str(AIRFLOW_HOME))
 
 from ingestion import imdb_run, tmdb_run
-from transformation import merge_reviews_silver, movies_run, reviews_run
+from transformation import merge_movies_silver,merge_reviews_silver, movies_run, reviews_run
 from nlp.src import inference
 from gold.gold_run import run_gold_layer
 
@@ -102,9 +102,7 @@ with DAG(
 
     end_of_ingestion = EmptyOperator(task_id='ingestion_completed')
 
-    # ==================================================================
     # STAGE 2: TRANSFORMATION (retry 2 lần — Spark job có thể OOM)
-    # ==================================================================
     transform_movies_task = PythonOperator(
         task_id = "transform_movie",
         python_callable= movies_run.run_all_movies_transformation,
@@ -118,8 +116,13 @@ with DAG(
         retries=2,
         retry_delay=timedelta(minutes=5),
     )
-
-    merge_silver_task = PythonOperator(
+    merge_movies_silver_task = PythonOperator(
+        task_id = "merge_movie_silver",
+        python_callable = merge_movies_silver.merge_movies,
+        retries=2,
+        retry_delay=timedelta(minutes=5),
+    )
+    merge_reviews_silver_task = PythonOperator(
         task_id = "merge_reviews_silver",
         python_callable= merge_reviews_silver.create_training_dataset,
         retries=2,
@@ -128,9 +131,7 @@ with DAG(
 
     end_of_transform = EmptyOperator(task_id="transform_completed")
 
-    # ==================================================================
     # STAGE 3: ML INFERENCE & AUTO-TRAIN CHECK
-    # ==================================================================
     start_ml = EmptyOperator(task_id="start_ml")
 
     check_model_task = BranchPythonOperator(
@@ -159,9 +160,7 @@ with DAG(
 
     end_ml = EmptyOperator(task_id='end_ml')
 
-    # ==================================================================
     # STAGE 4: GOLD LAYER (retry 2 lần — DB có thể bị lock/timeout)
-    # ==================================================================
     create_star_schema_task = SQLExecuteQueryOperator(
         task_id='create_star_schema_tables',
         conn_id="postgres_dwh",
@@ -182,17 +181,16 @@ with DAG(
         execution_timeout=timedelta(hours=1),
     )
 
-    # ==================================================================
     # ĐỊNH NGHĨA LUỒNG CHẠY
-    # ==================================================================
     # Stage 1: Ingestion
     start_pipeline >> [ingest_imdb_task, ingest_tmdb_task] >> end_of_ingestion
 
     # Stage 2: Transformation
     end_of_ingestion >> [transform_movies_task, transform_reviews_task]
-    transform_reviews_task >> merge_silver_task
-    [transform_movies_task, merge_silver_task] >> end_of_transform
-
+    transform_movies_task >> merge_movies_silver_task
+    transform_reviews_task >> merge_reviews_silver_task
+    [merge_movies_silver_task, merge_reviews_silver_task] >> end_of_transform
+        
     # Stage 3: ML Inference (Có cơ chế Branching tự động Train lần đầu)
     end_of_transform >> start_ml >> check_model_task
     check_model_task >> ml_task # Nhánh xuôi: Đã có model

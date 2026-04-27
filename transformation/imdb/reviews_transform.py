@@ -30,7 +30,7 @@ def transform_imdb_reviews(target_date=None):
         F.col("raw_payload.rating").alias("rating"),
         F.col("raw_payload.content").alias("content"),
         F.col("raw_payload.date").alias("created_at")
-    ).filter(F.col("imdb_id").isNotNull())
+    ).dropna(subset=["imdb_id", "author", "content", "created_at"])
 
     # Xử lý trùng lặp bằng window function
     window_spec = Window.partitionBy("review_id").orderBy(F.desc("ingestion_timestamp"))

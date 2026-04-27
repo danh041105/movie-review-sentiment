@@ -9,11 +9,9 @@ def create_training_dataset(target_date=None):
     if target_date is None:
         target_date = datetime.now().strftime("%Y-%m-%d")
     date_path = target_date.replace("-", "/")
-    imdb_path = f"s3a://{SILVER_BUCKET}/reviews/imdb/{date_path}/*.snappy.parquet"
-    tmdb_path = f"s3a://{SILVER_BUCKET}/reviews/tmdb/{date_path}/*.snappy.parquet"
-    
+    imdb_path = f"s3a://{SILVER_BUCKET}/reviews/imdb/{date_path}/*.parquet"
+    tmdb_path = f"s3a://{SILVER_BUCKET}/reviews/tmdb/{date_path}/*.parquet"
     print(f"[*] Đang nạp dữ liệu từ: {imdb_path} và {tmdb_path}")
-    
     # Đọc từng nguồn riêng, bỏ qua nếu không có dữ liệu mới (Redis dedup skip hết)
     dfs = []
     try:
@@ -51,7 +49,6 @@ def create_training_dataset(target_date=None):
     )
     # 3. Làm sạch dữ liệu cấp độ Dataset
     # - Loại bỏ trùng lặp dựa trên review_id
-    # - Lọc review có độ dài > 30 ký tự để đảm bảo có đủ ngữ cảnh cho khía cạnh
     clean_df = full_df.dropDuplicates(["review_id"]) \
                       .filter(F.length(F.col("content")) > 30) \
                       .filter(F.col("content").isNotNull())

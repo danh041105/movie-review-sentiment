@@ -29,19 +29,26 @@ CREATE TABLE IF NOT EXISTS dim_reviews_text (
     review_text_length INT
 );
 
--- Bảng Phim (Áp dụng SCD Type 2)
+-- Bảng Phim (Áp dụng SCD Type 1) — Dựa trên merged_movies Silver
 CREATE TABLE IF NOT EXISTS dim_movie (
     movie_id SERIAL PRIMARY KEY,
-    imdb_id VARCHAR(50),
+    imdb_id VARCHAR(50) UNIQUE,
     tmdb_id VARCHAR(50),
     title VARCHAR(255) NOT NULL,
+    original_title VARCHAR(255),
     original_language VARCHAR(10),
     release_date DATE,
-    genres VARCHAR(255),
+    genres VARCHAR(500),
     duration_seconds BIGINT,
     overview TEXT,
-    tmdb_rating FLOAT,
-    imdb_rating FLOAT
+    tmdb_rating FLOAT DEFAULT 0.0,
+    tmdb_vote_count BIGINT,
+    imdb_rating FLOAT DEFAULT 0.0,
+    imdb_vote_count BIGINT,
+    production_budget VARCHAR(100),
+    worldwide_gross VARCHAR(100),
+    tmdb_budget VARCHAR(100),
+    tmdb_revenue VARCHAR(100)
 );
 
 -- ==============================================================================
