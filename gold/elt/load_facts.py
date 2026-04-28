@@ -11,9 +11,8 @@ def load_fact_reviews(target_date=None):
         target_date = datetime.now()
     print(f"\n========== BẮT ĐẦU NẠP FACT_REVIEWS - NGÀY {target_date} ==========")
     spark = get_spark_session("Gold_Load_Fact_Reviews")
-    # =========================================================
+
     # BƯỚC 1: ĐỌC DỮ LIỆU TỪ TẦNG SILVER
-    # =========================================================
     silver_bucket = "silver"
     reviews_path = get_layer_path("s3a://", silver_bucket, "nlp/reviews_enriched", target_date)
     print(f"[*] Đang đọc dữ liệu review từ: {reviews_path}")
@@ -23,30 +22,20 @@ def load_fact_reviews(target_date=None):
         print(f"[!] Bỏ qua cập nhật Fact Table: Không tìm thấy file Parquet tại {reviews_path}. (Có thể do không có data review mới hôm nay).")
         spark.stop()
         return
-    
-    # =========================================================
-    # BƯỚC 2: CHUYỂN ĐỔI VÀ TẠO CÁC KHÓA (KEYS) CƠ BẢN
-    # =========================================================
     print("[*] Đang chuẩn bị các dimension keys và metrics...")
     facts_prepared_df = reviews_df.select(
         "review_id",
-        "imdb_id", # Giữ lại tạm thời để Lát nữa JOIN lấy movie_id
-        # Tạo date_id theo đúng chuẩn YYYYMMDD
+        "imdb_id",
         F.date_format("created_at", "yyyyMMdd").alias("date_id"),
-        # Ánh xạ source_system sang source_id (1: imdb, 2: tmdb)
         F.when(F.col("source_system") == "imdb", 1).otherwise(2).alias("source_id"),
-        # Ép kiểu prediction từ Float (của MLlib) sang Int làm sentiment_id
         F.col("predicted_sentiment").cast("int").alias("sentiment_id"),
-        # Đảm bảo các chỉ số đo lường đúng chuẩn kiểu Float
         F.col("rating").cast("float").alias("rating"),
         F.col("sentiment_confidence").cast("float").alias("sentiment_confidence"),
-        # Lấy thông tin thời gian thực và ID luồng chạy
         F.col("created_at").alias("created_date"),
         F.col("ingestion_id")
     )
-    # =========================================================
+
     # BƯỚC 3: TRA CỨU MOVIE_ID TỪ POSTGRESQL (LOOK-UP)
-    # =========================================================
     print("[*] Đang kết nối Database để tra cứu surrogate keys...")
     jdbc_url = get_jdbc_url()
     db_props = get_postgres_properties()
@@ -55,11 +44,8 @@ def load_fact_reviews(target_date=None):
     dim_movie_db = spark.read.jdbc(url=jdbc_url, table="dim_movie", properties=db_props) \
                         .select("movie_id", "imdb_id")
                         
-    # =========================================================
+
     # BƯỚC 4: JOIN VÀ CHỐT KHUNG DỮ LIỆU CUỐI CÙNG
-    # =========================================================
-    print("[*] Đang ráp nối dữ liệu để tạo Fact hoàn chỉnh...")
-    
     # Sử dụng F.broadcast cho dim_movie vì bảng chiều này thường nhỏ gọn, 
     # giúp tăng tốc độ Join lên rất nhiều lần!
     fact_reviews_final = facts_prepared_df.join(
@@ -68,7 +54,7 @@ def load_fact_reviews(target_date=None):
         how="inner"
     ).select(
         "review_id",
-        "movie_id", # Khóa thay thế quý giá lấy từ DB
+        "movie_id",
         "date_id",
         "source_id",
         "sentiment_id",
@@ -77,14 +63,30 @@ def load_fact_reviews(target_date=None):
         "created_date",
         "ingestion_id"
     )
-    # =========================================================
-    # BƯỚC 5: GHI VÀO POSTGRESQL
-    # =========================================================
-    print("[*] Đang nạp toàn bộ sự kiện vào fact_reviews...")
-    # Vì bảng Fact lưu dữ liệu theo thời gian, chúng ta luôn dùng mode="append"
-    write_to_postgres(fact_reviews_final, "fact_reviews", mode="append")
+
+    # BƯỚC 5: LOẠI TRÙNG VỚI DỮ LIỆU ĐÃ CÓ (Lưới an toàn cho Checkpoint)
+    # Vì Checkpoint dùng dấu < (cào lại ngày checkpoint để không sót bài),
+    # một số review của ngày checkpoint có thể bị trùng → cần loại ở đây.
+
+    print("[*] Đang kiểm tra review_id trùng lặp với dữ liệu đã có...")
+    existing_review_ids = spark.read.jdbc(
+        url=jdbc_url, table="fact_reviews", properties=db_props
+    ).select("review_id")
+    
+    new_facts = fact_reviews_final.join(existing_review_ids, on="review_id", how="left_anti")
+    
+    new_count = new_facts.count()
+    skipped = fact_reviews_final.count() - new_count
+    print(f"[*] Reviews mới: {new_count} | Trùng lặp bỏ qua: {skipped}")
+    # BƯỚC 6: GHI VÀO POSTGRESQL
+    if new_count > 0:
+        print(f"[*] Đang nạp {new_count} sự kiện mới vào fact_reviews...")
+        write_to_postgres(new_facts, "fact_reviews", mode="append")
+    else:
+        print("[*] Không có review mới. Bỏ qua.")
     print("========== HOÀN TẤT NẠP FACT_REVIEWS ==========")
     spark.stop()
+
 if __name__ == "__main__":
-    target_date = datetime.now()  # Nhớ thay đổi ngày cho khớp với dữ liệu test của bạn
+    target_date = datetime.now()
     load_fact_reviews(target_date)

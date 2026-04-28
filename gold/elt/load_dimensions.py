@@ -101,7 +101,6 @@ def load_dimensions(target_date):
 
     dim_movie = load_movie(spark, target_date)
     if dim_movie is not None:
-        # Lấy data hiện có để tránh lỗi unique constraint imdb_id
         existing_movies = spark.read.jdbc(url=get_jdbc_url(), table="dim_movie", properties=get_postgres_properties()).select("imdb_id")
         new_movies = dim_movie.join(existing_movies, on="imdb_id", how="left_anti")
         

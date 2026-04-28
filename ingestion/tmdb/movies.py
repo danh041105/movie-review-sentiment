@@ -54,7 +54,7 @@ def fetch_trending_movie_ids(limit=100):
 
 def fetch_movie_details(movie_id):
     url = f"{BASE_URL}/movie/{movie_id}"
-    params = {"api_key": TMDB_API_KEY, "language": "en-US"}
+    params = {"api_key": TMDB_API_KEY, "language": "en-US", "append_to_response": "external_ids"}
     try:
         response = requests.get(url, params=params)
         if response.status_code != 200:
@@ -63,6 +63,9 @@ def fetch_movie_details(movie_id):
         
         if "genres" in movie_data and isinstance(movie_data["genres"], list):
             movie_data["genres"] = [g["name"] for g in movie_data["genres"] if "name" in g]
+            
+        if "external_ids" in movie_data:
+            movie_data["imdb_id"] = movie_data["external_ids"].get("imdb_id", movie_data.get("imdb_id"))
 
     except Exception as e:
         return f"Metadata TMDB Error {movie_id}: {str(e)}"
@@ -74,19 +77,13 @@ def ingest_tmdb_movie(movie_id):
     if not is_movie_changed("tmdb", str(movie_id), movie_data):
         # Dữ liệu giống hệt → chỉ refresh TTL, không upload lại
         save_movie_state("tmdb", str(movie_id), movie_data)
-        return f"Metadata TMDB SKIP (không đổi): {movie_id}"
+        print(f"Metadata TMDB SKIP (không đổi): {movie_id}")
+        return None
 
-    # Dữ liệu mới hoặc đã thay đổi → upload lên MinIO
-    upload_to_minio(
-        raw_data=[movie_data],
-        source="tmdb",
-        entity="movies",
-        methods="Direct API Call (Requests)",
-        http_status=200,
-        search_params={"movie_id": movie_id}
-    )
+    # Dữ liệu mới hoặc đã thay đổi → Trả về để gom mảng
     save_movie_state("tmdb", str(movie_id), movie_data)
-    return f"Metadata TMDB OK (mới/cập nhật): {movie_id}"
+    print(f"Metadata TMDB OK (mới/cập nhật): {movie_id}")
+    return movie_data
 
 # if __name__ == "__main__":
 #     movie_details = fetch_movie_details("687163")

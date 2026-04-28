@@ -156,3 +156,53 @@ def save_reviews_state(source, movie_id, reviews_data, review_count=0, ttl_days=
         client.expire(key, ttl_days * 86400)
     except Exception as e:
         print(f"[Redis] Lỗi khi lưu state reviews movie {movie_id}: {e}")
+
+def get_review_checkpoint(source, movie_id):
+    """
+    Lấy ngày của bài review mới nhất đã cào thành công lần trước.
+    
+    Returns:
+        str | None: Ngày dạng ISO (vd: "2026-04-27") hoặc None nếu chưa cào lần nào.
+    
+    Cơ chế: Thay vì hash toàn bộ mảng reviews rồi so sánh (tốn tài nguyên),
+    ta chỉ lưu "mốc thời gian" của bài review mới nhất. Lần cào sau chỉ cần
+    lấy những bài MỚI HƠN mốc này → tiết kiệm 99% request API.
+    """
+    client = get_redis_client()
+    if client is None:
+        return None
+
+    key = _get_key(source, "reviews_checkpoint", movie_id)
+    try:
+        return client.hget(key, "latest_review_date")
+    except Exception as e:
+        print(f"[Redis] Lỗi khi đọc checkpoint reviews {movie_id}: {e}")
+        return None
+
+
+def save_review_checkpoint(source, movie_id, latest_date, review_count=0, ttl_days=DEFAULT_TTL_DAYS):
+    """
+    Lưu checkpoint (ngày review mới nhất) vào Redis sau khi cào xong.
+    
+    Args:
+        latest_date: Ngày của bài review mới nhất (str, ISO format).
+        review_count: Tổng số review mới đã upload trong lần cào này.
+    """
+    client = get_redis_client()
+    if client is None:
+        return
+
+    key = _get_key(source, "reviews_checkpoint", movie_id)
+    state = {
+        "latest_review_date": str(latest_date),
+        "last_scraped": datetime.now().isoformat(),
+        "source": source,
+        "movie_id": str(movie_id),
+        "new_review_count": str(review_count)
+    }
+
+    try:
+        client.hset(key, mapping=state)
+        client.expire(key, ttl_days * 86400)
+    except Exception as e:
+        print(f"[Redis] Lỗi khi lưu checkpoint reviews {movie_id}: {e}")
